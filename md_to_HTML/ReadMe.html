@@ -1,0 +1,140 @@
+<p>如今已经习惯了利用MarkDown编写使用文档和博文。大多数博客编辑网站也都支持MarkDown。如今想将文档快速导出为HTML，以方便建站使用，比如现在看到的这个文章。</p>
+<h2>思路规整</h2>
+<ul>
+<li>将MarkDown转为HTML模板</li>
+<li>根据不同的模块（表格、图片、列表）。修改HTML模板，以适应现有的样式表（这一点涉及面其实不多，我们主要美化HTML模板的方法还是利用CSS样式表，可以看到很多在线MarkDown编辑器也没有着重于这一点。）</li>
+<li>引用至主站</li>
+<li>解决附档和图片随MarkDown上传的问题（因为没有想做在线编辑器，当然主要是没有思路。投机取巧）</li>
+</ul>
+<h2>模板转化</h2>
+<p>熟悉了MarkDown写作的，大致也能猜到转化方法：按行匹配并附加上HTML标签即可。但是，既然是小工具，我们得先看下有没有可以利用的包。</p>
+<h3>前置工作</h3>
+<p>包<a href="https://pypi.org/project/Markdown/">markdown</a>是一个非常优秀的MarkDown文本处理工具用以规整MarkDown的输入和输出，暂时我们也只需要其中一个功能：MarkDown转HTML</p>
+<p>测试</p>
+<pre><code>import markdown
+
+markdownText = '''# 测试
+----------
+a|b|c
+-|-|-
+s|d|v
+'''
+
+print(markdown.markdown(markdownText, output_format='html5', extensions=['extra']))
+</code></pre>
+
+<p>测试结果</p>
+<pre><code>&lt;h1&gt;测试&lt;/h1&gt;
+&lt;hr&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;a&lt;/th&gt;
+&lt;th&gt;b&lt;/th&gt;
+&lt;th&gt;c&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;s&lt;/td&gt;
+&lt;td&gt;d&lt;/td&gt;
+&lt;td&gt;v&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+</code></pre>
+
+<p>讲解下两个要点</p>
+<ul>
+<li>通过output_format指定输出格式，因为这里只是利用此包转化MarkDown文档</li>
+<li>extensions属于拓展模块，MarkDown如果有特殊标准可以利用此导入拓展。extra是为了解析<code>代码块</code>，看到这时这个代码块已经被解析的，其实这是三个反引号包裹的代码块。</li>
+</ul>
+<h3>美化HTML</h3>
+<p><a href="https://pypi.org/project/beautifulsoup4/">BeautifulSoup4</a>，这个包较为常见于爬虫，用来解析HTML文档并转化为字典。这里用来格式化文本（其实上一步已经成了，画蛇添足下），大材小用下。</p>
+<pre><code>from bs4 import BeautifulSoup
+perser_HTML = markdown.markdown(markdownText, output_format='html5', extensions=['extra'])
+brautiful_HTML = BeautifulSoup(perser_HTML, 'html.parser').prettify()
+print(brautiful_HTML)
+</code></pre>
+
+<p>这里用<strong>html.parser</strong>主要是因为这是python自带的HTML格式化包。后期如果想规整HTML，并附加一些功能，<strong>BeautifulSoup4</strong>也会提供很多帮助。</p>
+<h3>工具规整与实现</h3>
+<ol>
+<li>需求规整</li>
+</ol>
+<p>这边鱼就只以个人需求为出发点进行分析了，因为需求难点已经解决了。</p>
+<p>因为网站使用的jinja2模板设计HTML，所以只需要留置参数，将转化好的HTML页面显示出来即可。又因为写MarkDown需要上传后才需要显示，所以预计将转换设计在MarkDown上传的时候。</p>
+<ol>
+<li>实现功能类</li>
+</ol>
+<p>首先为了方便，我们需要剥离逻辑，用类包装功能</p>
+<pre><code>from markdown import markdown
+from bs4 import BeautifulSoup
+import os.path as op
+class BeautifulOfMD():
+    def __init__(self, output_arg = 'html5',format_arg='html.parser',exten_arg=['extra'],head_tag = None):
+        '''默认参数规整'html5','html.parser',['extra']'''
+        self.output_arg = output_arg#转化模板
+        self.format_arg = format_arg#美化模板
+        self.exten_arg = exten_arg#拓展，默认只开启```识别
+        self.head_tag = head_tag #这是用来附加CSS样式的
+
+    def convert_to_HTML(self,infile,source = 'DB',outfile=None,en_code = 'utf8',beautiful_flag = False):
+        '''
+        当source为'DB'，将会直接将inflie当做MarkDown文档，return作为输出
+        当source为'FILE',则直接输入文件并输出到指定文件/同名同目录下
+        其他来源则默认与DB处理方式相同
+        '''
+</code></pre>
+
+<ol>
+<li>实现功能函数<ul>
+<li>将MarkDown文档转置为HTML</li>
+</ul>
+</li>
+</ol>
+<pre><code>    def convert_to_HTML(self,infile,source = 'DB',outfile=None,en_code = 'utf8',beautiful_flag = False):
+        '''
+        当source为'DB'，将会直接将inflie当做MarkDown文档，return作为输出
+        当source为'FILE',则直接输入文件并输出到指定文件/同名同目录下
+        其他来源则默认与DB处理方式相同
+        '''
+        #不同状态下的输入
+        if source == 'FILE':
+
+            if not op.isfile(infile):
+                return {
+                    'message':'请输入正确的 markdown 文件路径！',
+                    'result':None
+                }
+            if outfile is None:
+                outfile = op.splitext(infile)[0] + '.html'
+            with open(infile, 'r', encoding=en_code) as f:
+                markdownText = f.read()
+        else:
+            markdownText = infile
+
+        #转档处理
+        rawhtml = self.headTag + markdown.markdown(markdownText, output_format=self.output_arg, extensions=self.exten_arg)
+
+        if beautiful_flag:
+            rawhtml = BeautifulSoup(rawhtml, self.format_arg).prettify()
+
+        #不同状况下的输出
+        if source == 'FILE':
+            with open(outfile, 'w', encoding=en_code) as f:
+                f.write(rawhtml)
+        else:
+            return rawhtml
+</code></pre>
+
+<ol>
+<li>
+<p>导入实际使用</p>
+</li>
+<li>
+<p>测试</p>
+</li>
+</ol>
+<h3>附加的设计</h3>
+<p>单纯的转档不一定你能直接符合</p>
